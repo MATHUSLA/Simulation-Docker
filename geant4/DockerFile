@@ -17,14 +17,14 @@ RUN apt-get -y install wget cmake cmake-curses-gui build-essential \
 
 RUN mkdir -p ~/GEANT4/source; \
     cd ~/GEANT4/source; \
-    wget http://geant4.cern.ch/support/source/geant4.10.03.tar.gz
+    wget http://geant4.cern.ch/support/source/geant4.10.04.tar.gz
 
 RUN cd ~/GEANT4/source; \
-    tar -xzf geant4.10.03.tar.gz
+    tar -xzf geant4.10.04.tar.gz
 
 RUN mkdir -p ~/GEANT4/build; \
     cd ~/GEANT4/build; \
-    cmake ~/GEANT4/source/geant4.10.03 -DGEANT4_BUILD_MULTITHREADED=ON \
+    cmake ~/GEANT4/source/geant4.10.04 -DGEANT4_BUILD_MULTITHREADED=ON \
     -DGEANT4_USE_QT=ON -DGEANT4_USE_OPENGL_X11=ON \
     -DGEANT4_USE_RAYTRACER_X11=ON -DGEANT4_INSTALL_DATA=ON \
     -Wno-dev; \
