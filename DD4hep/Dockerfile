@@ -3,35 +3,22 @@
 # Docker build command:
 #   docker build -t gordonwatts/dd4hep:v01.07.01 .
 #
-FROM andreadotti/geant4-dev:10.4.p02
+# FROM andreadotti/geant4-dev:10.4.p02 as builder
+FROM g4:test as builder
 
 LABEL Author="Gordon Watts <gwatts@uw.edu>"
 
 USER root
 
-# Need to fetch stuff from the internet
-RUN apt-get update; \
-    apt-get install -y wget; \
-    apt-get install -y git dpkg-dev cmake g++ gcc binutils libx11-dev libxpm-dev libxft-dev libxext-dev python; \
-    apt-get install -y libgl1-mesa-dev libglu1-mesa-dev; \
-    apt-get install -y libboost-all-dev
+# Package installs
+RUN apt-get update
+RUN apt-get -y install wget cmake cmake-curses-gui build-essential \
+        libqt4-opengl libqt4-opengl-dev qt4-qmake libqt4-dev libx11-dev \
+        libxmu-dev libxpm-dev libxft-dev libboost-all-dev python
 
-# CLHEP - version should probably match G4 build:
-#   http://proj-clhep.web.cern.ch/proj-clhep/clhep23.html
-#   https://geant4.web.cern.ch/support/download
-
-RUN mkdir ~/CLHEP; \
-    cd ~/CLHEP; \
-    wget -q http://proj-clhep.web.cern.ch/proj-clhep/DISTRIBUTION/tarFiles/clhep-2.4.0.4.tgz; \
-    tar -zxf clhep-2.4.0.4.tgz; \
-    mkdir ~/CLHEP/build; \
-    cd ~/CLHEP/build; \
-    cmake -DCMAKE_INSTALL_PREFIX=/usr/local ~/CLHEP/2.4.0.4/CLHEP; \
-    cmake --build . -- -j2; \
-    cmake --build . --target install
-    
 # ROOT
-
+# I woudl love to add "-j`grep -c processor /proc/cpuinfo`" to the make below
+# however, it seems to cause ROOT builds to crash.
 RUN mkdir -p ~/root-source; \
         cd ~/root-source; \
         wget -q https://root.cern.ch/download/root_v6.12.06.source.tar.gz; \
@@ -39,29 +26,56 @@ RUN mkdir -p ~/root-source; \
 
 RUN mkdir -p ~/root-build; \
     cd ~/root-build; \
-    cmake -DCMAKE_INSTALL_PREFIX=/usr/local ~/root-source/root-6.12.06; \
-    cmake --build . -- -j2; \
-    cmake --build . --target install
+    cmake -DCMAKE_INSTALL_PREFIX=~/install ~/root-source/root-6.12.06; \
+    make ; \
+    make install
 
 # Finally, DD4hep
+# Currently pulled from a private repro b.c the last release doesn't build correctly.
+RUN apt-get -y install git libxerces-c-dev
 
-ARG DD4hepV=01-07-01
+ARG dd4git="https://github.com/gordonwatts/DD4hep.git"
+ARG dd4gitbranch="b0b4d60"
 
-RUN mkdir -p ~/DD4hep; \
+RUN cd ~; \
+    git clone $dd4git; \
     cd ~/DD4hep; \
-    wget -q https://github.com/AIDASoft/DD4hep/archive/v$DD4hepV.tar.gz; \
-    tar -zxf v$DD4hepV.tar.gz
+    git checkout $dd4gitbranch
 
-RUN mkdir -p ~/DD4hep/DD4hep-$DD4hepV/build; \
-    cd ~/DD4hep/DD4hep-$DD4hepV/build; \
-    bash -c 'source /usr/local/bin/thisroot.sh; \
+RUN mkdir -p ~/DD4hep/build; \
+    cd ~/DD4hep/build; \
+    bash -c 'source ~/install/bin/thisroot.sh; \
     cmake   -DDD4HEP_USE_GEANT4=ON \
             -DDD4HEP_USE_XERCESC=ON \
             -DBoost_NO_BOOST_CMAKE=ON \
             -DDD4HEP_USE_LCIO=OFF \
             -DBUILD_TESTING=ON \
             -DGeant4_DIR=/usr/local/geant4/lib/Geant4-10.4.2 \
-            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DCMAKE_INSTALL_PREFIX=~/install \
             -DROOT_DIR=$ROOTSYS \
             .. \
     '
+#
+# WARNING: you need at least 4 GB of memory availible to do the build
+# (spirit parsers are monadic and template heavy!)   
+RUN cd ~/DD4hep/build; \
+    bash -c 'source ~/install/bin/thisroot.sh; \
+    make -j`grep -c processor /proc/cpuinfo`; \
+    make install; \
+    '
+
+# Next, create a nice compact image
+FROM g4:test
+LABEL Author="Gordon Watts <gwatts@uw.edu>"
+USER root
+
+# Packages that are needed
+#RUN apt-get install python
+
+# Copy from the old install directory over
+COPY --from=builder /root/install /usr/local
+
+# Copy setup scripts into .bashrc so everything is defined when the user
+# starts the container.
+RUN echo ' . thisroot.sh' >> ~/.bashrc
+RUN echo ' . thisdd4hep.sh' >> ~/.bashrc
