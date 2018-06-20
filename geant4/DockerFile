@@ -3,9 +3,13 @@
 # Docker build command:
 #   docker build -t gordonwatts/geant4:10.30 .
 #
-FROM ubuntu:16.04
+FROM ubuntu:16.04 as builder
 
-MAINTAINER Gordon Watts <gwatts@uw.edu>
+LABEL Author="Gordon Watts <gwatts@uw.edu>"
+
+# You can alter these arguments from the command line when you build
+# this container
+ARG g4version=10.04.p02
 
 USER root
 
@@ -13,21 +17,36 @@ RUN apt-get update
 
 RUN apt-get -y install wget cmake cmake-curses-gui build-essential \
         libqt4-opengl libqt4-opengl-dev qt4-qmake libqt4-dev libx11-dev \
-        libxmu-dev libxpm-dev libxft-dev
+        libxmu-dev libxpm-dev libxft-dev libxerces-c-dev
 
 RUN mkdir -p ~/GEANT4/source; \
     cd ~/GEANT4/source; \
-    wget http://geant4.cern.ch/support/source/geant4.10.04.tar.gz
+    wget -q http://geant4.cern.ch/support/source/geant4.${g4version}.tar.gz
 
 RUN cd ~/GEANT4/source; \
-    tar -xzf geant4.10.04.tar.gz
+    tar -xzf geant4.${g4version}.tar.gz
 
 RUN mkdir -p ~/GEANT4/build; \
     cd ~/GEANT4/build; \
-    cmake ~/GEANT4/source/geant4.10.04 -DGEANT4_BUILD_MULTITHREADED=ON \
+    cmake ~/GEANT4/source/geant4.${g4version} -DGEANT4_BUILD_MULTITHREADED=ON \
     -DGEANT4_USE_QT=ON -DGEANT4_USE_OPENGL_X11=ON \
     -DGEANT4_USE_RAYTRACER_X11=ON -DGEANT4_INSTALL_DATA=ON \
+    -DGEANT4_USE_GDML=ON \
+    -DCMAKE_INSTALL_PREFIX=~/GEANT4/install \
     -Wno-dev; \
     make -j`grep -c processor /proc/cpuinfo`; \
-    make install; \
-    echo ' . geant4.sh' >> ~/.bashrc
+    make install
+
+# Next, make the actual image with just what we need.
+FROM ubuntu:16.04
+USER root
+
+# Get everything setup for running
+RUN apt-get update
+RUN apt-get -y install libqt4-opengl libx11-6 libxmu6 libxpm4 libxft2 libxerces-c3.1
+
+# Copy over everything in the install directory
+COPY --from=builder /root/GEANT4/install /usr/local
+
+# Make sure G4 is setup when we start a new shell
+RUN echo ' . geant4.sh' >> ~/.bashrc
