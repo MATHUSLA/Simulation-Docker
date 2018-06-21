@@ -4,7 +4,7 @@
 #   docker build -t gordonwatts/dd4hep:v01.07.01 .
 #
 # FROM andreadotti/geant4-dev:10.4.p02 as builder
-FROM g4:test as builder
+FROM gordonwatts/geant4:10.04.p02 as builder
 
 LABEL Author="Gordon Watts <gwatts@uw.edu>"
 
@@ -17,8 +17,9 @@ RUN apt-get -y install wget cmake cmake-curses-gui build-essential \
         libxmu-dev libxpm-dev libxft-dev libboost-all-dev python
 
 # ROOT
-# I woudl love to add "-j`grep -c processor /proc/cpuinfo`" to the make below
-# however, it seems to cause ROOT builds to crash.
+# Besure there is enough memory for this to succeed - the multiple
+# compilers can cause a memory issue. This is known to work with 6GB
+# availible on the build machine.
 RUN mkdir -p ~/root-source; \
         cd ~/root-source; \
         wget -q https://root.cern.ch/download/root_v6.12.06.source.tar.gz; \
@@ -27,7 +28,7 @@ RUN mkdir -p ~/root-source; \
 RUN mkdir -p ~/root-build; \
     cd ~/root-build; \
     cmake -DCMAKE_INSTALL_PREFIX=~/install ~/root-source/root-6.12.06; \
-    make ; \
+    make -j`grep -c processor /proc/cpuinfo`; \
     make install
 
 # Finally, DD4hep
@@ -63,6 +64,27 @@ RUN cd ~/DD4hep/build; \
     make -j`grep -c processor /proc/cpuinfo`; \
     make install; \
     '
+
+# Run the default tests to see how things work
+RUN cd ~/DD4hep/build; \
+    bash -c 'source ~/install/bin/thisroot.sh; \
+    make test; \
+    '
+
+# Run the much more sophisticated tests. Lots of these
+# fail, so we don't care too much - just run them as part of the
+# build process to see how we do generally.
+RUN bash -c 'source ~/install/bin/thisroot.sh; \
+    source ~/install/bin/thisdd4hep.sh; \
+    mkdir -p ~/DD4hep/examples/build; \
+    cd ~/DD4hep/examples/build; \
+    cmake ..; \
+    make install; \
+    make test; \
+    '
+
+# Get rid of the example data that the previous test would have put in place.
+RUN rm -rf ~/install/examples
 
 # Next, create a nice compact image
 FROM g4:test
