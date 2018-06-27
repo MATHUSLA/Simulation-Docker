@@ -78,16 +78,13 @@ RUN bash -c 'source ~/install/bin/thisroot.sh; \
     source ~/install/bin/thisdd4hep.sh; \
     mkdir -p ~/DD4hep/examples/build; \
     cd ~/DD4hep/examples/build; \
-    cmake ..; \
+    cmake -DCMAKE_INSTALL_PREFIX=~/install_tests ..; \
     make install; \
     make test; \
     '
 
-# Get rid of the example data that the previous test would have put in place.
-RUN rm -rf ~/install/examples
-
 # Next, create a nice compact image
-FROM g4:test
+FROM gordonwatts/geant4:10.04.p02
 LABEL Author="Gordon Watts <gwatts@uw.edu>"
 USER root
 
